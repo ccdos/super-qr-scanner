@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>极速扫码器</title>
+    <!-- 引入开源的高效扫码库 -->
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <!-- 引入现代化字体 -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #6366F1;
+            --primary-hover: #4F46E5;
+            --bg-color: #0F172A;
+            --card-bg: #1E293B;
+            --text-color: #F8FAFC;
+            --text-muted: #94A3B8;
+            --success: #10B981;
+            --warning: #F59E0B;
+            --danger: #EF4444;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            height: 100dvh; /* 使用dvh适配移动端浏览器底部导航栏 */
+            overflow: hidden;
+        }
+
+        /* ================= 顶部：摄像头区域 ================= */
+        #top-half {
+            flex: 1; /* 上半部分自适应 */
+            position: relative;
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+            z-index: 10;
+        }
+
+        #reader {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        /* 强制视频填满并裁剪，避免变形 */
+        #reader video {
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: cover !important;
+        }
+
+        /* 操作按钮遮罩层 */
+        .controls-overlay {
+            position: absolute;
+            bottom: 20px;
+            left: 0;
+            right: 0;
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            z-index: 20;
+        }
+
+        button {
+            background-color: rgba(30, 41, 59, 0.8);
+            color: var(--text-color);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 12px 24px;
+            border-radius: 9999px;
+            font-size: 15px;
+            font-weight: 500;
+            cursor: pointer;
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        button:active {
+            transform: scale(0.96);
+        }
+        
+        button.primary {
+            background-color: var(--primary);
+            border-color: var(--primary);
+        }
+        
+        button.primary:hover {
+            background-color: var(--primary-hover);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* ================= 底部：结果列表区域 ================= */
+        #bottom-half {
+            flex: 1; /* 下半部分自适应，形成 1:1 的分屏 */
+            background: var(--bg-color);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .header {
+            padding: 16px 20px;
+            background: rgba(30, 41, 59, 0.95);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            z-index: 5;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .header h3 {
+            font-size: 16px;
+            font-weight: 600;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .badge {
+            background: var(--primary);
+            color: white;
+            font-size: 12px;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-weight: 500;
+        }
+
+        .clear-btn {
+            background: transparent;
+            color: var(--text-muted);
+            box-shadow: none;
+            padding: 6px 12px;
+            font-size: 14px;
+            border: none;
+        }
+        
+        .clear-btn:hover {
+            color: var(--danger);
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        #result-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            scroll-behavior: smooth;
+        }
+
+        /* 自定义滚动条 */
+        #result-list::-webkit-scrollbar {
+            width: 6px;
+        }
+        #result-list::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        #result-list::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+        }
+
+        .result-item {
+            background: var(--card-bg);
+            padding: 16px;
+            border-radius: 16px;
+            border-left: 4px solid var(--success);
+            word-break: break-all;
+            animation: slideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            transition: transform 0.2s;
+        }
+
+        .result-item:active {
+            transform: scale(0.98);
+        }
+
+        .result-item.duplicate {
+            border-left-color: var(--warning);
+        }
+
+        .result-text {
+            font-size: 15px;
+            line-height: 1.5;
+            user-select: text; /* 允许长按选择文字 */
+        }
+
+        .result-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 4px;
+            padding-top: 10px;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .result-time {
+            font-size: 12px;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .copy-btn {
+            background: rgba(99, 102, 241, 0.1);
+            color: var(--primary);
+            box-shadow: none;
+            padding: 6px 14px;
+            font-size: 13px;
+            border: 1px solid rgba(99, 102, 241, 0.2);
+        }
+        
+        .copy-btn:hover {
+            background: var(--primary);
+            color: white;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        #empty-state {
+            text-align: center;
+            color: var(--text-muted);
+            margin-top: 40px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        #empty-state svg {
+            width: 48px;
+            height: 48px;
+            opacity: 0.5;
+        }
+
+        /* 覆盖 html5-qrcode 默认的丑陋边框 */
+        #reader__scan_region {
+            background: #000;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 上半部分：摄像头视图 -->
+    <div id="top-half">
+        <div id="reader"></div>
+        <div class="controls-overlay">
+            <button id="start-btn" class="primary">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+                开启扫码
+            </button>
+            <button id="stop-btn" style="display: none;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="9" x2="15" y2="15"></line><line x1="15" y1="9" x2="9" y2="15"></line></svg>
+                停止
+            </button>
+        </div>
+    </div>
+
+    <!-- 下半部分：结果列表 -->
+    <div id="bottom-half">
+        <div class="header">
+            <h3>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                扫码记录 
+                <span class="badge" id="count-badge">0</span>
+            </h3>
+            <button class="clear-btn" id="clear-btn">清空记录</button>
+        </div>
+        <div id="result-list">
+            <div id="empty-state">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6.5"/><path d="M12 21v-4a2 2 0 0 1 2-2h4"/><circle cx="16.5" cy="17.5" r="3.5"/><path d="m21 22-1.5-1.5"/></svg>
+                <span>还没有扫描任何内容<br>点击上方"开启扫码"</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 初始化 HTML5 扫码实例
+        const html5QrCode = new Html5Qrcode("reader");
+        
+        // DOM 元素引用
+        const resultList = document.getElementById('result-list');
+        const emptyState = document.getElementById('empty-state');
+        const countBadge = document.getElementById('count-badge');
+        const startBtn = document.getElementById('start-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        const clearBtn = document.getElementById('clear-btn');
+        
+        // 状态管理
+        let scannedItems = new Set(); // 用于去重判断
+        let scanCount = 0;
+        let lastScanTime = 0;
+
+        // 生成简易提示音 (Web Audio API) 替代外部文件加载，提高离线可用性
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playBeep() {
+            try {
+                if(audioCtx.state === 'suspended') audioCtx.resume();
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // A5 note
+                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime); // 音量
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                
+                oscillator.start();
+                gainNode.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + 0.1);
+                oscillator.stop(audioCtx.currentTime + 0.1);
+            } catch (e) {
+                console.log("Audio play prevented:", e);
+            }
+        }
+
+        // 添加结果到列表
+        function addResult(text) {
+            // 防抖：防止同一秒内重复触发扫描
+            const now = Date.now();
+            if (now - lastScanTime < 1000) return;
+            lastScanTime = now;
+
+            if(emptyState) emptyState.style.display = 'none';
+            
+            const isDuplicate = scannedItems.has(text);
+            if (!isDuplicate) {
+                scannedItems.add(text);
+            }
+            
+            scanCount++;
+            countBadge.innerText = scanCount;
+            
+            const item = document.createElement('div');
+            item.className = `result-item ${isDuplicate ? 'duplicate' : ''}`;
+            
+            const timeStr = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+            
+            // 安全处理文本，防止XSS注入，同时也方便转义引号传给 onclick
+            const safeText = text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+            const jsSafeText = text.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+            
+            item.innerHTML = `
+                <div class="result-text">${safeText}</div>
+                <div class="result-footer">
+                    <div class="result-time">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                        ${timeStr} ${isDuplicate ? '<span style="color:var(--warning);margin-left:4px;">(重复)</span>' : ''}
+                    </div>
+                    <button class="copy-btn" onclick="copyText('${jsSafeText}', this)">复制</button>
+                </div>
+            `;
+            
+            // 插入到最顶部
+            resultList.prepend(item);
+            
+            // 播放滴声提示
+            playBeep();
+            
+            // 手机端扫描到结果后自动产生轻微震动反馈 (支持的设备)
+            if (navigator.vibrate) {
+                navigator.vibrate(50);
+            }
+        }
+
+        // 复制文本到剪贴板
+        window.copyText = function(text, btnElement) {
+            // 恢复被转义的引号用于复制
+            const decodedText = text.replace(/&quot;/g, '"');
+            
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(decodedText).then(() => {
+                    showCopySuccess(btnElement);
+                }).catch(err => {
+                    fallbackCopyTextToClipboard(decodedText, btnElement);
+                });
+            } else {
+                fallbackCopyTextToClipboard(decodedText, btnElement);
+            }
+        }
+
+        // 降级复制方案 (兼容不支持 clipboard API 的环境)
+        function fallbackCopyTextToClipboard(text, btnElement) {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            textArea.style.position = "fixed";  // 避免滚动到页面底部
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            try {
+                const successful = document.execCommand('copy');
+                if(successful) showCopySuccess(btnElement);
+            } catch (err) {
+                console.error('Fallback: Oops, unable to copy', err);
+                alert('复制失败，请手动选择文本复制');
+            }
+            document.body.removeChild(textArea);
+        }
+
+        // 复制成功 UI 反馈
+        function showCopySuccess(btn) {
+            const originalText = btn.innerText;
+            btn.innerText = '已复制!';
+            btn.style.backgroundColor = 'var(--success)';
+            btn.style.color = 'white';
+            btn.style.borderColor = 'var(--success)';
+            setTimeout(() => {
+                btn.innerText = originalText;
+                btn.style.backgroundColor = '';
+                btn.style.color = '';
+                btn.style.borderColor = '';
+            }, 2000);
+        }
+
+        // 清空列表
+        clearBtn.addEventListener('click', () => {
+            if(scanCount === 0) return;
+            if(confirm('确定要清空所有扫码记录吗？')) {
+                scannedItems.clear();
+                scanCount = 0;
+                countBadge.innerText = '0';
+                resultList.innerHTML = '';
+                resultList.appendChild(emptyState);
+                emptyState.style.display = 'flex';
+            }
+        });
+
+        // 动态计算扫描框大小
+        function getQrBox() {
+            const width = window.innerWidth;
+            const height = document.getElementById('top-half').clientHeight;
+            const minEdge = Math.min(width, height);
+            // 扫描框为最短边的 70%，但不超过 300px
+            const qrboxSize = Math.min(Math.floor(minEdge * 0.7), 300);
+            return { width: qrboxSize, height: qrboxSize };
+        }
+
+        // 开启摄像头
+        startBtn.addEventListener('click', () => {
+            startBtn.disabled = true;
+            startBtn.innerHTML = '启动中...';
+
+            // 优先使用后置摄像头
+            const config = { 
+                fps: 10, 
+                qrbox: getQrBox,
+                aspectRatio: window.innerWidth / document.getElementById('top-half').clientHeight
+            };
+
+            html5QrCode.start(
+                { facingMode: "environment" }, 
+                config,
+                (decodedText) => {
+                    addResult(decodedText);
+                },
+                (errorMessage) => {
+                    // 解析失败时持续触发，静默忽略即可
+                }
+            ).then(() => {
+                startBtn.style.display = 'none';
+                startBtn.disabled = false;
+                startBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg> 继续扫码';
+                stopBtn.style.display = 'flex';
+            }).catch((err) => {
+                startBtn.disabled = false;
+                startBtn.innerHTML = '开启失败,重试';
+                alert("无法启动摄像头，请确保：\n1. 授予了摄像头权限\n2. 网址是 HTTPS 协议（或 localhost）\n详细错误: " + err);
+            });
+        });
+
+        // 停止摄像头
+        stopBtn.addEventListener('click', () => {
+            stopBtn.disabled = true;
+            html5QrCode.stop().then(() => {
+                stopBtn.style.display = 'none';
+                stopBtn.disabled = false;
+                startBtn.style.display = 'flex';
+            }).catch(err => {
+                console.error("停止摄像头失败", err);
+                stopBtn.disabled = false;
+            });
+        });
+        
+        // 监听窗口大小变化（比如手机旋转），可能需要调整扫描框
+        window.addEventListener('resize', () => {
+            if (html5QrCode.isScanning) {
+                // html5-qrcode 在扫描中动态调整大小会有闪烁，这里暂不强制重启
+                // 如果出现严重变形，可以考虑在这里先 stop() 再 start()
+            }
+        });
+    </script>
+</body>
+</html>
