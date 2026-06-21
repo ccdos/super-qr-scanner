@@ -325,7 +325,7 @@
         const clearBtn = document.getElementById('clear-btn');
         
         // 状态管理
-        let scannedItems = new Set(); // 用于去重判断
+        let lastScannedText = null; // 用于记录上一次扫码结果，避免连续重复
         let scanCount = 0;
         let lastScanTime = 0;
 
@@ -356,20 +356,20 @@
             // 防抖：防止同一秒内重复触发扫描
             const now = Date.now();
             if (now - lastScanTime < 1000) return;
+            
+            // 连续相同的内容不重复显示
+            if (text === lastScannedText) return;
+            
             lastScanTime = now;
+            lastScannedText = text;
 
             if(emptyState) emptyState.style.display = 'none';
-            
-            const isDuplicate = scannedItems.has(text);
-            if (!isDuplicate) {
-                scannedItems.add(text);
-            }
             
             scanCount++;
             countBadge.innerText = scanCount;
             
             const item = document.createElement('div');
-            item.className = `result-item ${isDuplicate ? 'duplicate' : ''}`;
+            item.className = `result-item`;
             
             const timeStr = new Date().toLocaleTimeString('zh-CN', { hour12: false });
             
@@ -382,7 +382,7 @@
                 <div class="result-footer">
                     <div class="result-time">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-                        ${timeStr} ${isDuplicate ? '<span style="color:var(--warning);margin-left:4px;">(重复)</span>' : ''}
+                        ${timeStr}
                     </div>
                     <button class="copy-btn" onclick="copyText('${jsSafeText}', this)">复制</button>
                 </div>
@@ -453,7 +453,7 @@
         clearBtn.addEventListener('click', () => {
             if(scanCount === 0) return;
             if(confirm('确定要清空所有扫码记录吗？')) {
-                scannedItems.clear();
+                lastScannedText = null;
                 scanCount = 0;
                 countBadge.innerText = '0';
                 resultList.innerHTML = '';
