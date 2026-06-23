@@ -210,6 +210,7 @@
             gap: 10px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.2);
             transition: transform 0.2s;
+            cursor: pointer;
         }
 
         .result-item:active {
@@ -226,6 +227,18 @@
             user-select: text; /* 允许长按选择文字 */
         }
 
+        .format-badge {
+            background: var(--warning);
+            color: #fff;
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-weight: 500;
+            display: inline-block;
+            width: fit-content;
+            margin-top: -2px;
+        }
+
         .result-details {
             font-size: 12px;
             color: var(--text-muted);
@@ -233,7 +246,12 @@
             padding: 8px;
             border-radius: 8px;
             overflow-x: auto;
-            margin-top: 5px;
+            margin-top: 2px;
+            display: none;
+        }
+
+        .result-details.show {
+            display: block;
         }
         
         .result-details pre {
@@ -323,7 +341,7 @@
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
                 扫码记录 
                 <span class="badge" id="count-badge">0</span>
-                <span class="version" id="version-badge">v1.0.2_20260623_1126</span>
+                <span class="version" id="version-badge">v1.0.2_20260623_1129</span>
             </h3>
             <button class="clear-btn" id="clear-btn">清空记录</button>
         </div>
@@ -374,6 +392,14 @@
             }
         }
 
+        // 切换详情显示
+        window.toggleDetails = function(element) {
+            const details = element.querySelector('.result-details');
+            if(details) {
+                details.classList.toggle('show');
+            }
+        };
+
         // 添加结果到列表
         function addResult(text, decodedResult) {
             // 防抖：防止同一秒内重复触发扫描
@@ -400,28 +426,35 @@
             const safeText = text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
             const jsSafeText = text.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
             
-            // 格式化输出 decodedResult
+            // 提取码制并格式化输出 decodedResult
             let resultDetailsHtml = '';
+            let formatBadgeHtml = '';
             if (decodedResult) {
                 try {
-                    // 仅提取有价值的 result 字段，如果整体太长也可以整体展示
+                    const formatName = decodedResult?.result?.format?.formatName;
+                    if (formatName) {
+                        formatBadgeHtml = `<div class="format-badge">${formatName}</div>`;
+                    }
                     const jsonStr = JSON.stringify(decodedResult, null, 2);
                     const safeJsonStr = jsonStr.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-                    resultDetailsHtml = `<div class="result-details"><pre>${safeJsonStr}</pre></div>`;
+                    resultDetailsHtml = `<div class="result-details" onclick="event.stopPropagation()"><pre>${safeJsonStr}</pre></div>`;
                 } catch (e) {
                     console.error("Format result error", e);
                 }
             }
+            
+            item.setAttribute('onclick', 'toggleDetails(this)');
 
             item.innerHTML = `
                 <div class="result-text">${safeText}</div>
+                ${formatBadgeHtml}
                 ${resultDetailsHtml}
-                <div class="result-footer">
+                <div class="result-footer" onclick="event.stopPropagation()">
                     <div class="result-time">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
                         ${timeStr}
                     </div>
-                    <button class="copy-btn" onclick="copyText('${jsSafeText}', this)">复制</button>
+                    <button class="copy-btn" onclick="copyText('${jsSafeText}', this); event.stopPropagation();">复制</button>
                 </div>
             `;
             
