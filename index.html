@@ -345,7 +345,7 @@
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
                 扫码记录 
                 <span class="badge" id="count-badge">0</span>
-                <span class="version" id="version-badge">v1.0.2_20260623_1133</span>
+                <span class="version" id="version-badge">v1.0.2_20260623_1436</span>
             </h3>
             <button class="clear-btn" id="clear-btn">清空记录</button>
         </div>
@@ -374,6 +374,34 @@
         let lastScannedText = null; // 用于记录上一次扫码结果，避免连续重复
         let scanCount = 0;
         let lastScanTime = 0;
+        
+        // 自动休眠管理
+        let idleTimer = null;
+        const IDLE_TIMEOUT = 5 * 60 * 1000; // 5分钟自动休眠
+
+        function resetIdleTimer() {
+            if (idleTimer) clearTimeout(idleTimer);
+            if (html5QrCode.isScanning) {
+                idleTimer = setTimeout(() => {
+                    if (html5QrCode.isScanning) {
+                        alert("长时间未操作，为节省电量已自动关闭摄像头。");
+                        stopBtn.click(); // 触发停止逻辑
+                    }
+                }, IDLE_TIMEOUT);
+            }
+        }
+
+        // 页面切换到后台自动关闭摄像头
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden && html5QrCode.isScanning) {
+                stopBtn.click();
+            }
+        });
+
+        // 触摸屏幕重置倒计时
+        document.addEventListener('touchstart', () => {
+            if (html5QrCode.isScanning) resetIdleTimer();
+        }, { passive: true });
 
         // 生成简易提示音 (Web Audio API) 替代外部文件加载，提高离线可用性
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -421,6 +449,7 @@
             
             scanCount++;
             countBadge.innerText = scanCount;
+            resetIdleTimer(); // 扫码成功重置休眠计时
             
             const item = document.createElement('div');
             item.className = `result-item`;
@@ -574,6 +603,7 @@
                 startBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg> 继续扫码';
                 stopBtn.style.display = 'flex';
                 photoBtn.style.display = 'flex';
+                resetIdleTimer(); // 开启时启动倒计时
             }).catch((err) => {
                 startBtn.disabled = false;
                 startBtn.innerHTML = '开启失败,重试';
@@ -586,6 +616,7 @@
             stopBtn.disabled = true;
             photoBtn.disabled = true;
             html5QrCode.stop().then(() => {
+                if (idleTimer) clearTimeout(idleTimer); // 关闭倒计时
                 stopBtn.style.display = 'none';
                 stopBtn.disabled = false;
                 photoBtn.style.display = 'none';
