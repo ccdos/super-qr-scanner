@@ -345,7 +345,7 @@
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
                 扫码记录 
                 <span class="badge" id="count-badge">0</span>
-                <span class="version" id="version-badge">v1.0.2_20260623_1436</span>
+                <span class="version" id="version-badge">v1.0.2_20260623_1438</span>
             </h3>
             <button class="clear-btn" id="clear-btn">清空记录</button>
         </div>
@@ -370,10 +370,20 @@
         const photoBtn = document.getElementById('photo-btn');
         const clearBtn = document.getElementById('clear-btn');
         
-        // 状态管理
+        // 状态管理与本地存储
+        const STORAGE_KEY = 'qr_scan_history';
+        const MAX_HISTORY = 50;
+        let scanHistory = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+        
         let lastScannedText = null; // 用于记录上一次扫码结果，避免连续重复
         let scanCount = 0;
         let lastScanTime = 0;
+        
+        function saveHistory() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(scanHistory));
+            } catch(e) { console.error("Storage error", e); }
+        }
         
         // 自动休眠管理
         let idleTimer = null;
@@ -433,39 +443,21 @@
             }
         };
 
-        // 添加结果到列表
-        function addResult(text, decodedResult) {
-            // 防抖：防止同一秒内重复触发扫描
-            const now = Date.now();
-            if (now - lastScanTime < 1000) return;
-            
-            // 连续相同的内容不重复显示
-            if (text === lastScannedText) return;
-            
-            lastScanTime = now;
-            lastScannedText = text;
-
+        // 渲染单条记录到界面
+        function renderItem(text, decodedResult, timeStr, prepend = true) {
             if(emptyState) emptyState.style.display = 'none';
-            
-            scanCount++;
-            countBadge.innerText = scanCount;
-            resetIdleTimer(); // 扫码成功重置休眠计时
             
             const item = document.createElement('div');
             item.className = `result-item`;
             
-            const timeStr = new Date().toLocaleTimeString('zh-CN', { hour12: false });
-            
-            // 安全处理文本，防止XSS注入，同时也方便转义引号传给 onclick
             const safeText = text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
             const jsSafeText = text.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
             
-            // 提取码制并格式化输出 decodedResult
             let resultDetailsHtml = '';
             let formatBadgeHtml = '';
             if (decodedResult) {
                 try {
-                    const formatName = decodedResult?.result?.format?.formatName;
+                    const formatName = decodedResult?.result?.format?.formatName || decodedResult?.formatName; // 兼容历史数据
                     if (formatName) {
                         formatBadgeHtml = `<div class="format-badge">${formatName}</div>`;
                     }
@@ -492,16 +484,56 @@
                 </div>
             `;
             
-            // 插入到最顶部
-            resultList.prepend(item);
-            
-            // 播放滴声提示
-            playBeep();
-            
-            // 手机端扫描到结果后自动产生轻微震动反馈 (支持的设备)
-            if (navigator.vibrate) {
-                navigator.vibrate(50);
+            if(prepend) {
+                resultList.prepend(item);
+            } else {
+                resultList.appendChild(item);
             }
+        }
+
+        // 页面加载时恢复历史记录
+        function loadHistory() {
+            scanCount = scanHistory.length;
+            countBadge.innerText = scanCount;
+            if(scanCount > 0 && emptyState) emptyState.style.display = 'none';
+            // 从后往前插入保证界面上最新的是倒序的第一个
+            for (let i = scanHistory.length - 1; i >= 0; i--) {
+                const record = scanHistory[i];
+                let fakeDecodedResult = record.decodedResult;
+                if (!fakeDecodedResult && record.formatName) {
+                    fakeDecodedResult = { formatName: record.formatName };
+                }
+                renderItem(record.text, fakeDecodedResult, record.timeStr, true);
+            }
+        }
+        
+        loadHistory();
+
+        // 添加结果到列表
+        function addResult(text, decodedResult) {
+            const now = Date.now();
+            if (now - lastScanTime < 1000) return;
+            if (text === lastScannedText) return;
+            
+            lastScanTime = now;
+            lastScannedText = text;
+            
+            const timeStr = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+            
+            // 更新本地存储
+            const formatName = decodedResult?.result?.format?.formatName;
+            scanHistory.unshift({ text, formatName, decodedResult, timeStr });
+            if (scanHistory.length > MAX_HISTORY) scanHistory.pop();
+            saveHistory();
+
+            scanCount = scanHistory.length;
+            countBadge.innerText = scanCount;
+            resetIdleTimer(); 
+
+            renderItem(text, decodedResult, timeStr, true);
+            
+            playBeep();
+            if (navigator.vibrate) navigator.vibrate(50);
         }
 
         // 复制文本到剪贴板
@@ -559,6 +591,8 @@
             if(confirm('确定要清空所有扫码记录吗？')) {
                 lastScannedText = null;
                 scanCount = 0;
+                scanHistory = [];
+                saveHistory();
                 countBadge.innerText = '0';
                 resultList.innerHTML = '';
                 resultList.appendChild(emptyState);
