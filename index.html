@@ -226,6 +226,21 @@
             user-select: text; /* 允许长按选择文字 */
         }
 
+        .result-details {
+            font-size: 12px;
+            color: var(--text-muted);
+            background: rgba(0, 0, 0, 0.2);
+            padding: 8px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin-top: 5px;
+        }
+        
+        .result-details pre {
+            margin: 0;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+        }
+
         .result-footer {
             display: flex;
             justify-content: space-between;
@@ -360,7 +375,7 @@
         }
 
         // 添加结果到列表
-        function addResult(text) {
+        function addResult(text, decodedResult) {
             // 防抖：防止同一秒内重复触发扫描
             const now = Date.now();
             if (now - lastScanTime < 1000) return;
@@ -385,8 +400,22 @@
             const safeText = text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
             const jsSafeText = text.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
             
+            // 格式化输出 decodedResult
+            let resultDetailsHtml = '';
+            if (decodedResult) {
+                try {
+                    // 仅提取有价值的 result 字段，如果整体太长也可以整体展示
+                    const jsonStr = JSON.stringify(decodedResult, null, 2);
+                    const safeJsonStr = jsonStr.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                    resultDetailsHtml = `<div class="result-details"><pre>${safeJsonStr}</pre></div>`;
+                } catch (e) {
+                    console.error("Format result error", e);
+                }
+            }
+
             item.innerHTML = `
                 <div class="result-text">${safeText}</div>
+                ${resultDetailsHtml}
                 <div class="result-footer">
                     <div class="result-time">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
@@ -495,8 +524,8 @@
             html5QrCode.start(
                 { facingMode: "environment" }, 
                 config,
-                (decodedText) => {
-                    addResult(decodedText);
+                (decodedText, decodedResult) => {
+                    addResult(decodedText, decodedResult);
                 },
                 (errorMessage) => {
                     // 解析失败时持续触发，静默忽略即可
